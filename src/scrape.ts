@@ -116,40 +116,50 @@ interface Account {
   webhookUrl: string;
 }
 
+async function postToSlack(
+  webhookUrl: string,
+  post: { caption: string; postId: string }
+) {
+  fetch(webhookUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      text: `${post.caption}\nhttps://www.instagram.com/p/${post.postId}/`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `${post.caption}\n<https://www.instagram.com/p/${post.postId}/|view on instagram>`,
+          },
+        },
+      ],
+    }),
+  });
+}
+
 async function scrapeAndPostToSlack(browser: Browser, account: Account) {
   const lastRun: string = JSON.parse(
     await fs.readFile(`./data/${account.usernameToScrape}.json`, "utf-8")
   ).lastSeenPostId;
+  if (!lastRun) {
+    console.log(`No last run found for ${account.usernameToScrape}, skipping`);
+    return;
+  }
   const results = await scrape(browser, {
     usernameToScrape: account.usernameToScrape,
     lastSeenPostId: lastRun,
   });
   await fs.writeFile(
     `./data/${account.usernameToScrape}.json`,
-    JSON.stringify(results, null, 2)
+    JSON.stringify(results, null, 2),
+    { encoding: "utf-8" }
   );
 
   await Promise.all(
-    results.posts.map((post) => {
-      fetch(account.webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: `${post.caption}\nhttps://www.instagram.com/p/${post.postId}/`,
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `${post.caption}\n<https://www.instagram.com/p/${post.postId}/|view on instagram>`,
-              },
-            },
-          ],
-        }),
-      });
-    })
+    results.posts.map((post) => postToSlack(account.webhookUrl, post))
   );
 }
 
